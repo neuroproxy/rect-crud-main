@@ -3,12 +3,35 @@ const {PrismaClient} = require('@prisma/client')
 const cors = require('cors')
 const helmet = require('helmet');
 const promClient = require('prom-client');
+const responseTime = require('response-time')
 
 const prisma = new PrismaClient()
 const app = express()
 
 const collectDefaultMetrics = promClient.collectDefaultMetrics;
 collectDefaultMetrics({ register: promClient.register });
+
+const reqTiempoRespuesta = new promClient.Histogram({
+    name: "http_express_req_res_time",
+    help: "Tiempo entre la solicitud y la respuesta",
+    labelNames: ["method", "route", "status_code"],
+    buckets: [1, 50, 100, 200, 400, 500, 800, 1000, 2000],
+})
+
+const totalSolicitudes = new promClient.Counter({ 
+    name: 'total_req',
+    help: 'Informacion sobre cuantas veces se ingreso a la web'
+ })
+
+app.use(responseTime((req, res, time) => {
+    totalSolicitudes.inc()
+    reqTiempoRespuesta.labels({ 
+        method: req.method,
+        route: req.url,
+        status_code: res.statusCode, 
+    })
+    .observe(time)
+}))
 
 //Formato JSON para solicitudes al servidor
 app.use(express.json())
